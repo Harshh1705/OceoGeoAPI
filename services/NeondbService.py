@@ -4,6 +4,9 @@ from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class NeonDBService:
     """Handles all interactions with the Neon PostgreSQL database.
@@ -13,7 +16,7 @@ class NeonDBService:
     """
 
     def __init__(self):
-        self.connection_string = os.environ.get("NEON_DATABASE_URL")
+        self.connection_string = os.getenv("NEON_DEV_DATABASE_URL")
         if not self.connection_string:
             raise RuntimeError("NEON_DATABASE_URL environment variable not set")
 
