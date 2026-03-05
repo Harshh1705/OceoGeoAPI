@@ -40,6 +40,9 @@ class ProcessService:
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
 
+            # Verify the user actually owns this project
+            self.db.verify_project_ownership(cursor, project_id, user_id)
+
             file_id = self.db.insert_file_record(
                 cursor, project_id, file.filename, metadata, file_size_bytes
             )

@@ -32,6 +32,24 @@ class NeonDBService:
         finally:
             conn.close()
 
+    # ── ownership ─────────────────────────────────────────────────────────────
+
+    def verify_project_ownership(self, cursor, project_id: int, user_id: str) -> None:
+        """
+        Verify that user_id owns the given project_id.
+        Raises LookupError if the project does not exist.
+        Raises PermissionError if the user does not own it.
+        """
+        cursor.execute(
+            "SELECT user_id FROM projects WHERE project_id = %s",
+            (project_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise LookupError(f"Project {project_id} does not exist")
+        if row[0] != user_id:
+            raise PermissionError(f"User does not own project {project_id}")
+
     # ── files ─────────────────────────────────────────────────────────────────
 
     def insert_file_record(
