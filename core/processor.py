@@ -60,8 +60,9 @@ def extract_profile_header(row: pd.Series) -> dict:
 def extract_measurements(group: pd.DataFrame) -> list[dict]:
     rows = []
     for _, row in group.iterrows():
-        # Skip depth levels with no adjusted pressure
-        if pd.isna(row.get("pres_adjusted", np.nan)):
+        # Skip rows where ALL core values are NaN (completely empty depth levels)
+        core_cols = ("pres", "pres_adjusted", "temp", "temp_adjusted", "psal", "psal_adjusted")
+        if all(pd.isna(row.get(col, np.nan)) for col in core_cols):
             continue
         rows.append({
             "depth_level":            safe_int(row.get("n_levels")),

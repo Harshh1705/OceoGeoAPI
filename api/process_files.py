@@ -3,6 +3,8 @@ from services.ProcessService import ProcessService
 
 router = APIRouter()
 
+MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
+
 
 @router.post("/process")
 async def process_file(
@@ -31,6 +33,16 @@ async def process_file(
             detail=f"Unsupported file type '{suffix}'. Expected one of {allowed_extensions}.",
         )
 
+    # ── File-size guard ───────────────────────────────────────────────────
+    if file.size is not None and file.size > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"File too large ({file.size / (1024 * 1024):.1f} MB). "
+                f"Maximum allowed size is {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB."
+            ),
+        )
+
     try:
         service = ProcessService()
         result = await service.process_netcdf(file, user_id=user_id, project_id=project_id)
@@ -41,5 +53,11 @@ async def process_file(
             "project_id": project_id,
             **result,
         }
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing file: {e}")
