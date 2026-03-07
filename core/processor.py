@@ -39,13 +39,21 @@ def extract_profile_header(row: pd.Series) -> dict:
     juld (Julian days since 1950-01-01) is converted to observed_at (TIMESTAMP).
     Fields not in the schema (juld_location, positioning_system) are dropped.
     """
-    juld = safe_float(row.get("juld"))
+    juld_raw = row.get("juld")
     observed_at = None
-    if juld is not None:
+    if juld_raw is not None:
         try:
-            observed_at = (
-                pd.Timestamp("1950-01-01") + pd.Timedelta(days=juld)
-            ).isoformat()
+            if isinstance(juld_raw, (pd.Timestamp, np.datetime64)):
+                # xarray already decoded JULD via the file's units attribute
+                ts = pd.Timestamp(juld_raw)
+                if not pd.isna(ts):
+                    observed_at = ts.isoformat()
+            else:
+                juld = safe_float(juld_raw)
+                if juld is not None:
+                    observed_at = (
+                        pd.Timestamp("1950-01-01") + pd.Timedelta(days=juld)
+                    ).isoformat()
         except Exception:
             observed_at = None
     return {
