@@ -150,3 +150,17 @@ class NeonDBService:
             ],
             page_size=500,
         )
+
+    # ── read queries (chat agent) ─────────────────────────────────────────────
+
+    def execute_select(self, query: str, params: tuple = ()) -> list[dict]:
+        """
+        Run a read-only SELECT query and return rows as a list of dicts.
+
+        Uses RealDictCursor so each row is an OrderedDict keyed by column name.
+        The caller is responsible for ensuring the query is a valid SELECT.
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(query, params)
+                return [dict(row) for row in cur.fetchall()]

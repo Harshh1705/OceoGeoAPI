@@ -1,17 +1,26 @@
 ## chat api
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from services.ChatService import ChatService
+from services.ChatServiceOllama import ChatServiceOllama
 
 router = APIRouter()
-service = ChatService()
+service = ChatServiceOllama()
+
+
 class ChatRequest(BaseModel):
     message: str
+    user_id: str
+    project_id: int
+
 
 @router.post("/send_message")
-async def send_message(request:ChatRequest):
+async def send_message(request: ChatRequest):
     try:
-        response = service.process_message(request.message)
-        return {"response":response}
+        response = service.process_message(
+            message=request.message,
+            user_id=request.user_id,
+            project_id=request.project_id,
+        )
+        return {"response": response}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=e)
+        raise HTTPException(status_code=500, detail=str(e))
