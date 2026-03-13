@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import chat
 from api import process_files
+from api import stats
 
 app = FastAPI()
 
@@ -15,6 +16,7 @@ app.add_middleware(
 
 app.include_router(chat.router, prefix= "/chat", tags=["chat"])
 app.include_router(process_files.router, prefix="/files", tags=["files"])
+app.include_router(stats.router, prefix="/stats", tags=["stats"])
 
 
 @app.get("/")
