@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str
     project_id: int
+    context: dict | None = None
 
 
 @router.post("/send_message")
@@ -20,6 +21,7 @@ async def send_message(request: ChatRequest):
             message=request.message,
             user_id=request.user_id,
             project_id=request.project_id,
+            context=request.context,
         )
         return {"response": response}
     except Exception as e:

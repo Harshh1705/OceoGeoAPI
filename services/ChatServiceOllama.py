@@ -2,7 +2,7 @@ import os
 import logging
 
 from services.NeondbService import NeonDBService
-from core.chatbot import classify_intent, run_sql_agent, run_domain_agent
+from core.chatbot import classify_intent, run_sql_agent, run_domain_agent, run_context_agent
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +23,30 @@ class ChatServiceOllama:
         self.intent_prompt = _load_prompt("intent_prompt.md")
         self.sql_prompt = _load_prompt("sql_prompt.md")
         self.domain_prompt = _load_prompt("domain_prompt.md")
+        self.context_prompt = _load_prompt("context_prompt.md")
 
-    def process_message(self, message: str, user_id: str, project_id: int) -> dict:
+    def process_message(self, message: str, user_id: str, project_id: int, context: dict | None = None) -> dict:
         """
         Classify the message intent and route to the appropriate agent.
 
         Returns a dict with at least {"intent": str, ...} plus intent-specific keys.
         """
+        # Build an enriched classification prompt if context is supplied.
+        # This helps the classifier understand the user is viewing a specific chart.
+        if context:
+            chart_label = context.get("chartLabel", "")
+            variables = context.get("variables", [])
+            context_hint = (
+                f"\n\n[CURRENT USER VIEW: The user is looking at a '{chart_label}' chart "
+                f"showing {', '.join(variables) if variables else 'oceanographic data'}. "
+                f"Questions about what these values mean or expected trends are CONTEXT or DOMAIN, not SQL.]"
+            )
+            intent_prompt_with_hint = self.intent_prompt + context_hint
+        else:
+            intent_prompt_with_hint = self.intent_prompt
+
         try:
-            intent = classify_intent(message, self.intent_prompt)
+            intent = classify_intent(message, intent_prompt_with_hint)
         except Exception:
             logger.exception("Intent classification failed")
             intent = "OFF_TOPIC"
@@ -64,6 +79,17 @@ class ChatServiceOllama:
                 return {
                     "intent": "DOMAIN",
                     "response": "Sorry, I encountered an error. Please try again.",
+                }
+
+        if intent == "CONTEXT":
+            try:
+                response = run_context_agent(message, context, self.context_prompt)
+                return {"intent": "CONTEXT", "response": response}
+            except Exception:
+                logger.exception("Context agent failed")
+                return {
+                    "intent": "CONTEXT",
+                    "response": "Sorry, I encountered an error interpreting this context. Please try again.",
                 }
 
         # OFF_TOPIC
