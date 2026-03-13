@@ -14,6 +14,52 @@ _FORBIDDEN_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Matches a bare language tag on its own line, e.g. "sql" or "SQL" at the start
+_LANG_TAG_RE = re.compile(r"^[ \t]*(sql|SQL)\s*\n")
+
+
+def _clean_sql_query(query: str) -> str:
+    """
+    Sanitise a raw SQL string produced by an LLM before execution.
+
+    Handles the following common formatting artefacts:
+    - Literal ``\\n`` escape sequences  (e.g. ``sql\\nSELECT ...\\n``)
+    - Markdown code fences: ```sql ... ``` or ``` ... ```
+    - Bare language tags:  a line containing only "sql" before the query
+    - Leading / trailing whitespace and stray semicolons
+    - Collapsed whitespace inside the query (tabs → spaces, multi-space → single space)
+
+    Returns a clean, single-statement SQL string ready for parameterisation.
+    """
+    cleaned = query.strip()
+
+    # ── 1. Unescape literal \n / \t sequences the LLM may have emitted ───────
+    #       e.g.  "sql\nSELECT *\nFROM t\n"  →  "sql\nSELECT *\nFROM t\n"
+    if r"\n" in cleaned:
+        cleaned = cleaned.replace(r"\n", "\n").replace(r"\t", "\t")
+
+    # ── 2. Strip markdown code fences  (```sql … ```  or  ``` … ```) ─────────
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        # Drop the opening fence line (```sql or ```) and the closing ``` line
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
+        cleaned = "\n".join(lines).strip()
+
+    # ── 3. Strip a bare language label on the very first line  ───────────────
+    #       e.g.  "sql\nSELECT …"  →  "SELECT …"
+    cleaned = _LANG_TAG_RE.sub("", cleaned).strip()
+
+    # ── 4. Collapse internal whitespace (keep newlines for readability) ───────
+    #       Replace tab characters with a single space
+    cleaned = cleaned.replace("\t", " ")
+    #       Collapse runs of spaces (but not newlines) to a single space
+    cleaned = re.sub(r"[ ]{2,}", " ", cleaned)
+
+    # ── 5. Strip a trailing semicolon – psycopg2 does not need it ────────────
+    cleaned = cleaned.rstrip("; \t\n")
+
+    return cleaned
+
 
 def create_sql_tool(project_id: int, user_id: str, db: NeonDBService):
     """
@@ -36,12 +82,9 @@ def create_sql_tool(project_id: int, user_id: str, db: NeonDBService):
             query: A valid PostgreSQL SELECT statement. Use {project_id}
                    as a placeholder for the current project.
         """
-        # ── 1. Strip markdown fencing if the LLM wrapped it ──────────
-        cleaned = query.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.splitlines()
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            cleaned = "\n".join(lines).strip()
+        # ── 1. Clean / normalise the raw LLM output ──────────────────
+        cleaned = _clean_sql_query(query)
+        logger.debug("Cleaned SQL: %s", cleaned)
 
         # ── 2. Block anything that is not a SELECT ───────────────────
         if _FORBIDDEN_KEYWORDS.search(cleaned):
