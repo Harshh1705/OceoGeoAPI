@@ -1,2 +1,2 @@
 ## config
-MODEL="qwen3:0.6b"
+MODEL="qwen2.5-coder:7b"

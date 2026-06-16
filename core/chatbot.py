@@ -7,6 +7,15 @@ from agno.models.ollama import Ollama
 from config import MODEL
 from core.tools import create_sql_tool
 from services.NeondbService import NeonDBService
+from core.glossary import GLOSSARY
+import re
+
+from agno.agent import Agent
+from agno.models.ollama import Ollama
+
+from config import MODEL
+from core.tools import create_sql_tool
+from services.NeondbService import NeonDBService
 
 
 def classify_intent(message: str, system_message: str) -> str:
@@ -20,7 +29,7 @@ def classify_intent(message: str, system_message: str) -> str:
     raw = (response.content or "").strip().upper()
 
     # The model might wrap the label in extra text/thinking — extract the label
-    for label in ("SQL", "DOMAIN", "OFF_TOPIC"):
+    for label in ("SQL", "CONTEXT", "DOMAIN", "OFF_TOPIC"):
         if label in raw:
             return label
     return "OFF_TOPIC"
@@ -41,6 +50,7 @@ def run_sql_agent(
 
     agent = Agent(
         model=Ollama(id=MODEL),
+        # model=Ollama('qwen2.5-coder:7b'),
         system_message=system_message,
         tools=[sql_tool],
         markdown=False
@@ -133,5 +143,35 @@ def run_domain_agent(message: str, system_message: str) -> str:
         system_message=system_message,
         markdown=True,
     )
+    response = agent.run(message)
+    return (response.content or "").strip()
+
+
+def run_context_agent(message: str, context: dict | None, system_message: str) -> str:
+    """Answer a question about a specific variable or chart pattern using the Ground Truth glossary."""
+    
+    # 1. Prepare the glossary string
+    glossary_str = "GLOSSARY GROUND TRUTH:\n"
+    for var, details in GLOSSARY.items():
+        glossary_str += f"- {var.upper()} ({details['unit']}): {details['physical_meaning']}\n"
+        glossary_str += f"  Typical ranges: {details.get('typical_surface_range', '')} / {details.get('typical_deep_range', '')} / {details.get('typical_open_ocean_range', '')} / {details.get('typical_argo_range', '')}\n"
+        glossary_str += f"  Anomalies: {details.get('anomaly_note', '')}\n"
+
+    # 2. Prepare the user view state string
+    view_state_str = "\nCURRENT VIEW STATE:\n"
+    if context:
+        view_state_str += json.dumps(context, indent=2)
+    else:
+        view_state_str += "None provided."
+
+    # 3. Add both to the system prompt
+    full_system_prompt = system_message + "\n\n" + glossary_str + view_state_str
+
+    agent = Agent(
+        model=Ollama(id=MODEL),
+        system_message=full_system_prompt,
+        markdown=True,
+    )
+    
     response = agent.run(message)
     return (response.content or "").strip()

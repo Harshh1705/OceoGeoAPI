@@ -4,9 +4,10 @@ import numpy as np
 
 def extract_file_metadata(ds: xr.Dataset) -> dict:
     """Pull only the columns that exist in the `files` table."""
+    attrs_lower = {str(k).lower(): v for k, v in ds.attrs.items()}
     return {
-        "platform_number": safe_str(ds.attrs.get("platform_number")),
-        "data_centre":     safe_str(ds.attrs.get("data_centre")),
+        "platform_number": safe_str(attrs_lower.get("platform_number")),
+        "data_centre":     safe_str(attrs_lower.get("data_centre")),
     }
 
 def extract_profiles(ds: xr.Dataset) -> list[dict]:
@@ -15,6 +16,9 @@ def extract_profiles(ds: xr.Dataset) -> list[dict]:
     and return a list of profile dicts (each containing a 'measurements' list).
     """
     df_full = ds.to_dataframe().reset_index()
+    # Ensure all columns are lowercase for case-insensitive access
+    df_full.columns = [str(c).lower() for c in df_full.columns]
+    
     # ARGO files produce a cartesian product across dimensions; keep only
     # the primary measurement rows (n_param=0, n_calib=0, n_history=0).
     filter_cols = {"n_param", "n_calib", "n_history"}
@@ -24,6 +28,10 @@ def extract_profiles(ds: xr.Dataset) -> list[dict]:
         mask &= df_full[col] == 0
     df = df_full[mask].copy()
     profiles = []
+    
+    if "n_prof" not in df.columns:
+        raise ValueError("The uploaded NetCDF file does not contain an 'N_PROF' / 'n_prof' profile dimension. Is this a valid ARGO profile file?")
+
     for prof_idx, group in df.groupby("n_prof"):
         first = group.iloc[0]
         profile = {
